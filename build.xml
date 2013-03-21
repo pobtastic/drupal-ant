@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project name="DrupalDeploy" default="init" basedir=".">
+  <!-- Include the appropriate environment file. -->
+  <property file="${WORKSPACE}/environments/${Environment}.properties"/>
+
+  <!-- Default task, does nothing - just depends on "info". -->
+  <target name="init" depends="info"/>
+
+  <!-- Core tasks. -->
+
+  <!-- Initial deployment task to build the site and push it to a specified server. -->
+  <target name="initial-deploy" depends="info">
+    <echo message="Creating build directory."/>
+    <mkdir dir="${WORKSPACE}/build"/>
+    <antcall target="copy-files"/>
+    <antcall target="copy-settings-php"/>
+    <antcall target="phplint"/>
+    <antcall target="permissions"/>
+    <antcall target="keep-set-amount-builds"/>
+    <antcall target="transfer-build"/>
+    <antcall target="create-current-symlink"/>
+    <antcall target="create-files-dir"/>
+    <antcall target="create-files-symlink"/>
+    <antcall target="drush-site-install"/>
+    <antcall target="drush-features-revert"/>
+<!--    <antcall target="drush-test-run"/> -->
+    <antcall target="drush-status"/>
+  </target>
+  
+  <!-- Deployment task to build the site and push it to a specified server. -->
+  <target name="deploy" depends="info">
+    <echo message="Creating build directory."/>
+    <mkdir dir="${WORKSPACE}/build"/>
+    <antcall target="copy-files"/>
+    <antcall target="copy-settings-php"/>
+    <antcall target="phplint"/>
+    <antcall target="permissions"/>
+    <antcall target="keep-set-amount-builds"/>
+    <antcall target="transfer-build"/>
+    <antcall target="create-current-symlink"/>
+    <antcall target="create-files-symlink"/>
+    <antcall target="drush-cache-clear"/>
+    <antcall target="drush-updatedb"/>
+    <antcall target="drush-schema-compare"/>
+    <antcall target="drush-features-revert"/>
+<!--    <antcall target="drush-test-run"/> -->
+    <antcall target="drush-status"/>
+  </target>
+
+  <!-- Displays various information about this server and the site installation. -->
+  <target name="info">
+    <echo message="Using:" level="info"/>
+    <echo message="BUILD_ID  = ${BUILD_ID}" level="info"/>
+    <echo message="WORKSPACE = ${WORKSPACE}" level="info"/>
+    <echo message="${ant.version}" level="info"/>
+    <echo message="ENVIRONMENT = ${Environment}" level="info"/>
+  </target>
+
+  <!-- Copies the cloned files to the build directory. -->
+  <target name="copy-files">
+    <copy todir="${WORKSPACE}/build/${BUILD_ID}">
+      <fileset dir="${WORKSPACE}/public"/>
+    </copy>
+  </target>
+
+  <!-- Creates the files directory. -->
+  <target name="create-files-dir">
+    <echo message="Creating files directory."/>
+    <sshexec host="${host.ip}" username="jenkins" keyfile="${JENKINS_HOME}/.ssh/id_rsa" passphrase="" command="mkdir /var/www/files"/>
+  </target>
+  
+  <!-- Creates the files directory symlink. -->
+  <target name="create-files-symlink">
+    <echo message="Creating files directory symlink."/>
+    <sshexec host="${host.ip}" username="jenkins" keyfile="${JENKINS_HOME}/.ssh/id_rsa" passphrase="" command="ln -s /var/www/files /var/www/drupal/current/sites/${site.folder}/files"/>
+  </target>
+
+  <!-- Creates a settings.php file. -->
+  <target name="copy-settings-php">
+    <copy file="${WORKSPACE}/settings/${Environment}.php" tofile="${WORKSPACE}/build/${BUILD_ID}/sites/${site.folder}/settings.php"/>
+  </target>
+
+  <!-- Sets file/ directory permissions. -->
+  <target name="permissions">
+    <echo message="Setting permissions."/>
+<!--    <chmod file="${WORKSPACE}/build/${BUILD_ID}/CHANGELOG.txt" perm="a-r"/> -->
+    <chmod file="${WORKSPACE}/build/${BUILD_ID}/sites/${site.folder}" perm="a+w"/>
+    <chmod file="${WORKSPACE}/build/${BUILD_ID}/sites/${site.folder}/files" perm="a+w"/>
+    <chmod file="${WORKSPACE}/build/${BUILD_ID}/sites/${site.folder}/settings.php" perm="a+w"/>
+  </target>
+  
+  <!-- Maintains a set number of builds to keep. -->
+  <target name="keep-set-amount-builds">
+    <sshexec host="${host.ip}" username="jenkins" keyfile="${JENKINS_HOME}/.ssh/id_rsa" passphrase="" command="cd /var/www/drupal; ls -t1 --ignore current| tail -n +5| xargs rm -rf"/>
+  </target>
+
+  <!-- Transfers the build to the specified environment. -->
+  <target name="transfer-build">
+    <scp remoteTodir="jenkins@${host.ip}:/var/www/drupal" trust="yes" sftp="true" keyfile="${JENKINS_HOME}/.ssh/id_rsa" passphrase="">
+      <fileset dir="${WORKSPACE}/build">
+        <include name="**/*"/>
+      </fileset>
+    </scp>
+  </target>
+  
+  <!-- Refreshes the 'current' symlink. -->
+  <target name="create-current-symlink">
+    <sshexec host="${host.ip}" username="jenkins" keyfile="${JENKINS_HOME}/.ssh/id_rsa" passphrase="" command="rm /var/www/drupal/current; ln -s /var/www/drupal/${BUILD_ID} /var/www/drupal/current"/>
+  </target>
+  
+  <!-- Runs PHP lint against all files in the build. -->
+  <target name="phplint">
+    <apply executable="php" failonerror="true">
+      <arg value="-l"/>
+      <fileset dir="${WORKSPACE}/build/${BUILD_ID}">
+        <include name="**/*.engine"/>
+        <include name="**/*.inc"/>
+        <include name="**/*.info"/>
+        <include name="**/*.install"/>
+        <include name="**/*.module"/>
+        <include name="**/*.profile"/>
+        <include name="**/*.test"/>
+        <include name="**/*.php"/>
+        <include name="**/*.po"/>
+        <!-- These cause the build to fail as they redeclare functions like "example_perm()". -->
+        <exclude name="**/coder/coder_upgrade/tests/new/samples/example.module"/>
+        <exclude name="**/coder/coder_upgrade/tests/old/samples/example.module"/>
+      </fileset>
+    </apply>
+  </target>
+
+  <!-- Drush commands. -->
+
+  <!-- DRUSH task for clearing the caches for the installation. -->
+  <target name="drush-cache-clear">
+    <echo message="Clearing caches for: @${site.alias}."/>
+    <drush command="cache-clear all"/>
+  </target>
+  
+  <!-- DRUSH task for comparing database tables to ensure correct running. -->
+  <target name="drush-schema-compare">
+    <echo message="Comparing database schema for: @${site.alias}."/>
+    <drush command="en schema -y"/>
+    <drush command="schema-compare mismatch"/>
+    <drush command="schema-compare missing"/>
+    <drush command="schema-compare extra"/>
+    <drush command="dis schema -y"/>
+  </target>
+  
+  <!-- DRUSH task for checking Drupal coding standards. -->
+  <target name="drush-coder">
+    <echo message="Running coding standards check for: @${site.alias}."/>
+    <drush command="en coder_review -y"/>
+    <drush command="coder --reviews=comment,release,security,sql,style --no-empty --minor --summary /var/www/drupal/current/sites/all/modules/custom"/>
+    <drush command="dis coder -y"/>
+  </target>
+  
+  <!-- DRUSH task for reverting Features. -->
+  <target name="drush-features-revert">
+    <echo message="Reverting Features for: @${site.alias}."/>
+    <drush command="cache-clear drush"/>
+    <drush command="features-revert-all --force -y"/>
+  </target>
+
+  <!-- DRUSH site installation. -->
+  <target name="drush-site-install">
+    <echo message="Site install for @${site.alias}"/>
+    <drush command="site-install @${site.alias} --db-url=mysql://${mysql.user}:${mysql.pass}@${mysql.host}:${mysql.port}/${mysql.dbname} --account-pass=${site.pass} -y "/>
+  </target>
+  
+  <!-- DRUSH task for running update hooks for the installation. -->
+  <target name="drush-updatedb">
+    <echo message="Running update hooks for: @${site.alias}."/>
+    <drush command="updatedb -y"/>
+  </target>
+  
+  <!-- DRUSH task for running cron jobs. -->
+  <target name="drush-cron" depends="info">
+    <echo message="Running cron for: @${site.alias}."/>
+    <drush command="cron"/>
+  </target>
+
+  <!-- DRUSH task for running SimpleTests against the installation. -->
+  <target name="drush-test-run">
+    <echo message="Running SimpleTests for: @${site.alias}."/>
+    <drush command="test-run --all"/>
+  </target>
+
+  <!-- DRUSH task for returning a status report for the installation. -->
+  <target name="drush-status">
+    <echo message="Status report for: @${site.alias}."/>
+    <drush command="status"/>
+  </target>
+
+  <!-- Macros. -->
+  <macrodef name="drush">
+    <attribute name="command"/>
+    <attribute name="failonerror" default="true"/>
+    <element name="args" optional="true"/>
+    <sequential>
+      <echo message="drush @${site.alias} @{command}"/>
+      <sshexec host="${host.ip}" username="jenkins" keyfile="${JENKINS_HOME}/.ssh/id_rsa" passphrase="" command="drush @${site.alias} @{command}" failonerror="@{failonerror}"/>
+    </sequential>
+  </macrodef>
+</project>
