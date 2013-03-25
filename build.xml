@@ -23,7 +23,7 @@
     <antcall target="create-files-symlink"/>
     <antcall target="drush-site-install"/>
     <antcall target="drush-features-revert"/>
-<!--    <antcall target="drush-test-run"/> -->
+    <antcall target="drush-test-run"/>
     <antcall target="drush-status"/>
   </target>
   
@@ -43,7 +43,7 @@
     <antcall target="drush-updatedb"/>
     <antcall target="drush-schema-compare"/>
     <antcall target="drush-features-revert"/>
-<!--    <antcall target="drush-test-run"/> -->
+    <antcall target="drush-test-run"/>
     <antcall target="drush-status"/>
   </target>
 
@@ -193,13 +193,25 @@
   </target>
 
   <!-- Macros. -->
+  <macrodef name="drush-remote">
+    <attribute name="command"/>
+    <attribute name="failonerror" default="true"/>
+    <echo message="drush @${site.alias} @{command}"/>
+    <sshexec host="${host.ip}" username="jenkins" keyfile="${JENKINS_HOME}/.ssh/id_rsa" passphrase="" command="drush @${site.alias} @{command}" failonerror="@{failonerror}"/>
+  </macrodef>
+
   <macrodef name="drush">
     <attribute name="command"/>
     <attribute name="failonerror" default="true"/>
     <element name="args" optional="true"/>
     <sequential>
-      <echo message="drush @${site.alias} @{command}"/>
-      <sshexec host="${host.ip}" username="jenkins" keyfile="${JENKINS_HOME}/.ssh/id_rsa" passphrase="" command="drush @${site.alias} @{command}" failonerror="@{failonerror}"/>
+      <echo message="drush @${Site} @{command}"/>
+      <exec executable="${PHP}" failonerror="@{failonerror}">
+        <arg value="drush"/>
+        <arg value="@${site.alias}"/>
+        <arg value="@{command}"/>
+        <args/>
+      </exec>
     </sequential>
   </macrodef>
 </project>
