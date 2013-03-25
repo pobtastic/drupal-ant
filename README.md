@@ -20,4 +20,5 @@ Using Jenkins;
 
 Properties:
 WORKSPACE=$WORKSPACE
+
 BUILD_ID=$BUILD_ID
