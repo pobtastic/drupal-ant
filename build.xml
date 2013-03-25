@@ -16,6 +16,7 @@
     <mkdir dir="${WORKSPACE}/build"/>
     <antcall target="copy-files"/>
     <antcall target="copy-settings-php"/>
+    <antcall target="copy-ping-php"/>
     <antcall target="phplint"/>
     <antcall target="permissions"/>
     <antcall target="keep-set-amount-builds"/>
@@ -35,6 +36,7 @@
     <mkdir dir="${WORKSPACE}/build"/>
     <antcall target="copy-files"/>
     <antcall target="copy-settings-php"/>
+    <antcall target="copy-ping-php"/>
     <antcall target="phplint"/>
     <antcall target="permissions"/>
     <antcall target="keep-set-amount-builds"/>
@@ -80,6 +82,11 @@
   <!-- Creates a settings.php file. -->
   <target name="copy-settings-php">
     <copy file="${WORKSPACE}/settings/${Environment}.php" tofile="${WORKSPACE}/build/${BUILD_ID}/sites/${site.folder}/settings.php"/>
+  </target>
+
+  <!-- Creates a ping file for Varnish. -->
+  <target name="copy-ping-php">
+    <copy file="${WORKSPACE}/files/${drupal.version}.ping.php" tofile="${WORKSPACE}/build/${BUILD_ID}/ping.php"/>
   </target>
 
   <!-- Sets file/ directory permissions. -->
