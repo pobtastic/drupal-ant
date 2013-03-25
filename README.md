@@ -19,6 +19,6 @@ Using Jenkins;
   * Add some global variables to be passed to the build script
 
 Properties:
-WORKSPACE=$WORKSPACE
 
+WORKSPACE=$WORKSPACE/n
 BUILD_ID=$BUILD_ID
