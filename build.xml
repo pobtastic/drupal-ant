@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <project name="DrupalDeploy" default="init" basedir=".">
+  <!-- Include global properties. -->
+  <property file="${WORKSPACE}/environments/global.properties"/>
   <!-- Include the appropriate environment file. -->
   <property file="${WORKSPACE}/environments/${Environment}.properties"/>
 
@@ -66,13 +68,13 @@
   <!-- Creates the files directory. -->
   <target name="create-files-dir">
     <echo message="Creating files directory."/>
-    <sshexec host="${host.ip}" username="jenkins" keyfile="${JENKINS_HOME}/.ssh/id_rsa" passphrase="" command="mkdir /var/www/files"/>
+    <sshexec host="${host.ip}" username="jenkins" keyfile="${JENKINS_HOME}/.ssh/id_rsa" passphrase="" command="mkdir ${files.root}"/>
   </target>
   
   <!-- Creates the files directory symlink. -->
   <target name="create-files-symlink">
     <echo message="Creating files directory symlink."/>
-    <sshexec host="${host.ip}" username="jenkins" keyfile="${JENKINS_HOME}/.ssh/id_rsa" passphrase="" command="ln -s /var/www/files /var/www/drupal/current/sites/${site.folder}/files"/>
+    <sshexec host="${host.ip}" username="jenkins" keyfile="${JENKINS_HOME}/.ssh/id_rsa" passphrase="" command="ln -s ${files.root} ${deploy.root}/current/sites/${site.folder}/files"/>
   </target>
 
   <!-- Creates a settings.php file. -->
@@ -91,12 +93,12 @@
   
   <!-- Maintains a set number of builds to keep. -->
   <target name="keep-set-amount-builds">
-    <sshexec host="${host.ip}" username="jenkins" keyfile="${JENKINS_HOME}/.ssh/id_rsa" passphrase="" command="cd /var/www/drupal; ls -t1 --ignore current| tail -n +5| xargs rm -rf"/>
+    <sshexec host="${host.ip}" username="jenkins" keyfile="${JENKINS_HOME}/.ssh/id_rsa" passphrase="" command="cd ${deploy.root}; ls -t1 --ignore current| tail -n +5| xargs rm -rf"/>
   </target>
 
   <!-- Transfers the build to the specified environment. -->
   <target name="transfer-build">
-    <scp remoteTodir="jenkins@${host.ip}:/var/www/drupal" trust="yes" sftp="true" keyfile="${JENKINS_HOME}/.ssh/id_rsa" passphrase="">
+    <scp remoteTodir="jenkins@${host.ip}:${deploy.root}" trust="yes" sftp="true" keyfile="${JENKINS_HOME}/.ssh/id_rsa" passphrase="">
       <fileset dir="${WORKSPACE}/build">
         <include name="**/*"/>
       </fileset>
@@ -105,7 +107,7 @@
   
   <!-- Refreshes the 'current' symlink. -->
   <target name="create-current-symlink">
-    <sshexec host="${host.ip}" username="jenkins" keyfile="${JENKINS_HOME}/.ssh/id_rsa" passphrase="" command="rm /var/www/drupal/current; ln -s /var/www/drupal/${BUILD_ID} /var/www/drupal/current"/>
+    <sshexec host="${host.ip}" username="jenkins" keyfile="${JENKINS_HOME}/.ssh/id_rsa" passphrase="" command="rm ${deploy.root}/current; ln -s ${deploy.root}/${BUILD_ID} ${deploy.root}/current"/>
   </target>
   
   <!-- Runs PHP lint against all files in the build. -->
@@ -151,7 +153,7 @@
   <target name="drush-coder">
     <echo message="Running coding standards check for: @${site.alias}."/>
     <drush command="en coder_review -y"/>
-    <drush command="coder --reviews=comment,release,security,sql,style --no-empty --minor --summary /var/www/drupal/current/sites/all/modules/custom"/>
+    <drush command="coder --reviews=comment,release,security,sql,style --no-empty --minor --summary ${deploy.root}/current/sites/all/modules/custom"/>
     <drush command="dis coder -y"/>
   </target>
   
