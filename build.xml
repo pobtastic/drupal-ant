@@ -6,19 +6,21 @@
   <!-- Include user specific properties. -->
   <property file="${user.home}/${Site}.properties"/>
   <!-- Include the appropriate site files. -->
-  <property file="./config/sites/${Site}.properties"/>
+  <property file="${basedir}/config/sites/${Site}.properties"/>
   <!-- Include the appropriate environment properties files. -->
-  <property file="./config/environments/${Environment}.properties"/>
+  <property file="${basedir}/config/environments/${Environment}.properties"/>
   <!-- Include global properties. -->
-  <property file="./config/global.properties"/>
+  <property file="${basedir}/config/global.properties"/>
 
   <!-- Core tasks. -->
 
   <!-- Displays various information about this server and the site installation. -->
   <target name="info" description="Provides some output about this build and environment.">
     <echo message="Using:" level="info"/>
+    <echo message="${os.name} ${os.version}" level="info"/>
     <echo message="${ant.version}" level="info"/>
-    <echo message="${user.home}" level="info"/>
+    <echo message="${ant.file} = ${ant.project.name}" level="info"/>
+    <echo message="User = ${user.name}:${user.home}" level="info"/>
     <echo message="BUILD_ID = ${BUILD_ID}" level="info"/>
     <echo message="WORKSPACE = ${WORKSPACE}" level="info"/>
     <echo message="Site = ${Site}" level="info"/>
@@ -34,6 +36,8 @@
 
   <!-- Initial deployment task to build the site and push it to a specified server. -->
   <target name="initial-deploy" depends="info" description="Initial build and deployment.">
+    <echoproperties/>
+    <antcall target="create-build-dir"/>
   </target>
 
   <!-- Deployment task to build the site and push it to a specified server. -->
@@ -81,7 +85,7 @@
   <!-- Creates a settings.php file. -->
   <target name="create-settings-php" description="Creates a settings.php file in the correct place within Drupal for the current site.">
     <echo message="Creating settings.php file."/>
-    <copy file="./files/drupal-${drupal.version}.settings.php" tofile="${WORKSPACE}/build/sites/${site.folder}/settings.php" overwrite="true">
+    <copy file="${basedir}/files/drupal-${drupal.version}.settings.php" tofile="${WORKSPACE}/build/sites/${site.folder}/settings.php" overwrite="true">
       <filterchain>
         <replacetokens>
           <token key="DATABASE_DRIVER" value="mysql"/>
@@ -103,7 +107,7 @@
   <!-- Creates a ping.php file used for Varnish to establish site health. -->
   <target name="copy-ping-php" description="Creates a ping.php file in the Drupal webroot for use with Varnish.">
     <echo message="Creating settings.php file."/>
-    <copy file="./files/drupal-${drupal.version}.ping.php" tofile="${WORKSPACE}/build/ping.php" overwrite="true"/>
+    <copy file="${basedir}/files/drupal-${drupal.version}.ping.php" tofile="${WORKSPACE}/build/ping.php" overwrite="true"/>
   </target>
 
   <!-- Creates a file containing the current version information. -->
@@ -320,7 +324,7 @@
       <var name="failonerror" value="@{failonerror}"/>
       <foreach target="drush-all-action" param="file" inheritAll="true">
         <path>
-          <fileset dir="./config/sites">
+          <fileset dir="${basedir}/config/sites">
             <include name="*.properties"/>
           </fileset>
         </path>
