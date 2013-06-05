@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <project name="DrupalDeploy" default="info" basedir=".">
+  <!-- Include antcontrib xml. -->
   <taskdef resource="net/sf/antcontrib/antlib.xml"/>
   <!-- Include property files - the order is IMPORTANT! -->
   <!-- Include user specific properties. -->
@@ -38,65 +39,43 @@
   <!-- Deployment task to build the site and push it to a specified server. -->
   <target name="deploy" depends="info" description="Regular build and deployment.">
     <echo message="Beginning deployment tasks..."/>
+    <antcall target="phplint"/>
     <antcall target="create-build-dir"/>
-    <antcall target="copy-files"/>
+    <antcall target="copy-files-to-build-dir"/>
     <antcall target="create-settings-php"/>
     <antcall target="copy-ping-php"/>
-    <antcall target="phplint"/>
-    <antcall target="permissions"/>
+    <antcall target="create-version-file"/>
     <antcall target="keep-set-amount-builds"/>
     <antcall target="transfer-build"/>
+    <antcall target="create-files-dir-symlink"/>
+    <antcall target="set-permissions"/>
     <antcall target="create-current-symlink"/>
-    <antcall target="create-files-symlink"/>
     <antcall target="drush-cache-clear"/>
-    <antcall target="drush-updatedb"/>
+    <antcall target="drush-update-database"/>
     <antcall target="drush-schema-compare"/>
     <antcall target="drush-features-revert"/>
-    <antcall target="drush-test-run"/>
+    <antcall target="drush-simpletest-run"/>
     <antcall target="drush-status"/>
   </target>
 
+  <!-- Cleans the build directory. -->
+  <target name="clean-build-dir" description="Cleans the build directory.">
+    <echo message="Cleaning build directory."/>
+    <delete dir="${WORKSPACE}/build"/>
+  </target>
+
   <!-- Creates the build directory. -->
-  <target name="create-build-dir">
+  <target name="create-build-dir" depends="clean-build-dir" description="Creates the build directory.">
     <echo message="Creating build directory."/>
     <mkdir dir="${WORKSPACE}/build"/>
   </target>
 
   <!-- Copies the cloned files to the build directory. -->
-  <target name="copy-files">
-    <copy todir="${WORKSPACE}/build/${BUILD_ID}">
-      <fileset dir="${WORKSPACE}/public"/>
+  <target name="copy-files-to-build-dir" description="Copies the cloned files to the build directory.">
+    <echo message="Copying files to build directory."/>
+    <copy todir="${WORKSPACE}/build">
+      <fileset dir="${WORKSPACE}/vendor/drupal-${drupal.version}"/>
     </copy>
-  </target>
-
-  <!-- Creates the files directory. -->
-  <target name="create-files-dir" description="Creates a files directory.">
-    <switch value="${drupal.files}">
-      <case value="remote">
-        <antcall target="create-files-dir-remote"/>
-      </case>
-      <case value="local">
-        <antcall target="create-files-dir-local"/>
-      </case>
-    </switch>
-  </target>
-
-  <!-- Creates the files directory remotely. -->
-  <target name="create-files-dir-remote" description="Creates a files directory remotely.">
-    <echo message="Creating files directory."/>
-    <ssh command="mkdir ${files.root}"/>
-  </target>
-
-  <!-- Creates the files directory locally. -->
-  <target name="create-files-dir-local" description="Creates a files directory locally.">
-    <echo message="Creating files directory."/>
-    <mkdir dir="${WORKSPACE}/public/sites/${site.folder}/files"/>
-  </target>
-
-  <!-- Creates the remote files directory symlink. -->
-  <target name="create-files-dir-symlink">
-    <echo message="Creating files directory symlink."/>
-    <ssh command="ln -s ${files.root} ${deploy.root}/current/sites/${site.folder}/files"/>
   </target>
 
   <!-- Creates a settings.php file. -->
@@ -127,33 +106,59 @@
     <copy file="./files/drupal-${drupal.version}.ping.php" tofile="${WORKSPACE}/build/ping.php" overwrite="true"/>
   </target>
 
-  <!-- Sets file/ directory permissions. -->
-  <target name="permissions" description="Ensures certain files and folders have correct permissions.">
-    <echo message="Setting permissions."/>
-    <ssh command="chmod a-r ${web.root}/CHANGELOG.txt"/>
-    <ssh command="chmod go-w ${web.root}/sites/${site.folder}"/>
-    <ssh command="chmod go-w ${web.root}/sites/${site.folder}/settings.php"/>
-    <ssh command="chmod a+rwx ${web.root}/sites/${site.folder}/files"/>
+  <!-- Creates a file containing the current version information. -->
+  <target name="create-version-file" description="Places a text file containing version information in the site folder.">
+    <echo message="Creating VERSION file."/>
+    <touch file="${WORKSPACE}/build/sites/${site.folder}/VERSION.txt"/>
+    <echo file="${WORKSPACE}/build/sites/${site.folder}/VERSION.txt" append="false">${Tag}</echo>
   </target>
 
   <!-- Maintains a set number of builds to keep. -->
-  <target name="keep-set-amount-builds">
+  <target name="keep-set-amount-builds" description="Maintains a set number of builds to keep.">
     <echo message="Ensuring there are only five build directories."/>
-    <ssh command="cd ${deploy.root}; ls -t1 --ignore current| tail -n +5| xargs rm -rf"/>
+    <ssh command="cd ${web.root}; ls -t1 --ignore current| tail -n +5| xargs rm -rf"/>
   </target>
 
   <!-- Transfers the build to the specified environment. -->
   <target name="transfer-build" description="SCPs the build to the remote hosting server.">
-    <scp remoteTodir="${ssh.user}@${host.ip}:${web.root}" trust="yes" sftp="true" keyfile="${JENKINS_HOME}/.ssh/id_rsa" passphrase="${ssh.passphrase}">
+    <scp remoteTodir="${ssh.user}@${host.ip}:${web.root}/${BUILD_ID}" trust="${ssh.trust}" sftp="true" keyfile="${ssh.keyfile}" passphrase="${ssh.passphrase}">
       <fileset dir="${WORKSPACE}/build">
         <include name="**/*"/>
       </fileset>
     </scp>
   </target>
 
+  <!-- Creates the remote files directory symlink. -->
+  <target name="create-files-dir-symlink" description="Creates a files directory symlink on the remote server.">
+    <echo message="Creating files directory symlink."/>
+    <ssh command="ln -s ${files.root} ${web.root}/${BUILD_ID}/sites/${site.folder}/files"/>
+  </target>
+
+  <!-- Sets file/ directory permissions. -->
+  <target name="set-permissions" description="Ensures certain files and folders have correct permissions.">
+    <echo message="Setting permissions."/>
+    <ssh command="chmod a-r ${web.root}/${BUILD_ID}/CHANGELOG.txt"/>
+    <ssh command="chmod go-w ${web.root}/${BUILD_ID}/sites/${site.folder}"/>
+    <ssh command="chmod go-w ${web.root}/${BUILD_ID}/sites/${site.folder}/settings.php"/>
+    <ssh command="chmod a+rwx ${web.root}/${BUILD_ID}/sites/${site.folder}/files"/>
+  </target>
+
   <!-- Refreshes the 'current' symlink. -->
   <target name="create-current-symlink" description="Recreates the 'current' symlink folder pointing to the current build.">
-    <ssh command="rm ${deploy.root}/current; ln -s ${deploy.root}/${BUILD_ID} ${deploy.root}/current"/>
+    <ssh command="rm ${web.root}/current; ln -s ${web.root}/${BUILD_ID} ${web.root}/current"/>
+  </target>
+
+  <!-- Unused. -->
+
+  <!-- Creates the files directory locally. -->
+  <target name="create-files-dir" description="Creates a files directory locally.">
+    <echo message="Creating files directory."/>
+    <mkdir dir="${WORKSPACE}/build/sites/${site.folder}/files"/>
+  </target>
+
+  <!-- Removes the webroot directory on the remote server. -->
+  <target name="clean-webroot" description="Removes the webroot directory.">
+    <ssh command="rm -rf ${web.root}; mkdir ${web.root}"/>
   </target>
 
   <!-- Lint commands. -->
@@ -236,28 +241,16 @@
     <drush command="site-install ${drupal.profile} --db-url=mysql://${mysql.user}:${mysql.pass}@${mysql.host}:${mysql.port}/${mysql.dbname} --account-pass=${site.pass} -y "/>
   </target>
 
-  <!-- DRUSH task for running update hooks for the installation. -->
-  <target name="drush-updatedb" description="Updates the database with any new schema changes.">
-    <echo message="Running update hooks for: @${site.alias}."/>
-    <drush command="updatedb -y"/>
-  </target>
-
-  <!-- DRUSH task for running update hooks for all installations. -->
-  <target name="drush-updatedb-all" description="Updates the database with any new schema changes for all sites.">
-    <echo message="Running update database on all sites."/>
-    <drush-all command="updatedb -y"/>
-  </target>
-
   <!-- DRUSH task for running cron jobs. -->
   <target name="drush-cron" description="Runs regular maintenance tasks.">
     <echo message="Running cron for: @${site.alias}."/>
     <drush command="cron"/>
   </target>
 
-  <!-- DRUSH task for running cron jobs on all installations. -->
-  <target name="drush-cron-all" description="Runs regular maintenance tasks for all sites.">
-    <echo message="Running cron on all sites."/>
-    <drush-all command="cron"/>
+  <!-- DRUSH task for running update hooks for the installation. -->
+  <target name="drush-update-database" description="Updates the database with any new schema changes.">
+    <echo message="Running update hooks for: @${site.alias}."/>
+    <drush command="updatedb -y"/>
   </target>
 
   <!-- DRUSH task for running SimpleTests against the installation. -->
@@ -271,6 +264,20 @@
   <target name="drush-status" description="Displays a status report.">
     <echo message="Status report for: @${site.alias}."/>
     <drush command="status"/>
+  </target>
+
+  <!-- System commands. -->
+
+  <!-- DRUSH task for running update hooks for all installations. -->
+  <target name="drush-update-database-all" description="Updates the database with any new schema changes across all sites.">
+    <echo message="Running update database on all sites."/>
+    <drush-all command="updatedb -y"/>
+  </target>
+
+  <!-- DRUSH task for running cron jobs on all installations. -->
+  <target name="drush-cron-all" description="Runs regular maintenance tasks across all sites.">
+    <echo message="Running cron on all sites."/>
+    <drush-all command="cron"/>
   </target>
 
   <!-- System commands. -->
@@ -300,7 +307,7 @@
     <attribute name="command"/>
     <attribute name="failonerror" default="true"/>
     <sequential>
-      <sshexec host="${host.ip}" username="${ssh.user}" password="${ssh.password}" keyfile="" passphrase="${ssh.passphrase}" trust="${ssh.trust}" command="@{command}" failonerror="@{failonerror}"/>
+      <sshexec host="${host.ip}" username="${ssh.user}" password="${ssh.password}" keyfile="${ssh.keyfile}" passphrase="${ssh.passphrase}" trust="${ssh.trust}" command="@{command}" failonerror="@{failonerror}"/>
     </sequential>
   </macrodef>
 
@@ -322,7 +329,7 @@
   </macrodef>
 
   <!-- Helper target for drush-all. -->
-  <target name="drush-all-action">
+  <target name="drush-all-action" description="Helper target for drush-all, loads the property file and calls 'drush' macro.">
     <property file="${file}"/>
     <drush command="${command}" failonerror="${failonerror}"/>
   </target>
@@ -333,7 +340,7 @@
     <attribute name="failonerror" default="true"/>
     <sequential>
       <echo message="drush @${site.alias} @{command}"/>
-      <ssh command="sudo -u ${ssh.sudo_user} ${drush.path}/${drush.exec} @${site.alias} @{command}" failonerror="@{failonerror}"/>
+      <ssh command="sudo -u ${ssh.deploy_user} ${PHP} ${DRUSH} @${site.alias} @{command}" failonerror="@{failonerror}"/>
     </sequential>
   </macrodef>
 
